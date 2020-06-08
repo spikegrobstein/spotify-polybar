@@ -33,6 +33,21 @@ Basic stuff:
  * `spotify-polybar playpause` -- pause (resume doesn't work right, yet)
  * `spotify-polybar previous` -- previous track
 
+## Polybar example
+
+```ini
+[module/spotify]
+type = custom/script
+exec = "~/.local/bin/spotify-polybar status"
+interval = 5
+
+label = "%output%"
+
+format-background = #030
+format-padding = 1
+
+```
+
 ## Licence
 
 This is MIT licensed. See LICENSE file.
