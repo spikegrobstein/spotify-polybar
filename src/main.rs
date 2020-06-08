@@ -31,11 +31,25 @@ async fn main() {
                           )
                           .get_matches();
 
-    let spotify = get_spotify_client().await.unwrap();
+    let spotify = match get_spotify_client().await {
+        Ok(spotify) => spotify,
+        Err(error) => {
+            println!("Error.");
+            eprintln!("Error: {}", error);
+            std::process::exit(1);
+        }
+    };
 
     match matches.subcommand() {
         ("status", Some(_matches)) => {
-            let playing = spotify.current_user_playing_track().await.unwrap();
+            let playing = match spotify.current_user_playing_track().await {
+                Ok(playing) => playing,
+                Err(error) => {
+                    println!("Error.");
+                    eprintln!("Error: {}", error);
+                    std::process::exit(1);
+                }
+            };
 
             match playing {
                 None => {
