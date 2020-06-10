@@ -50,14 +50,15 @@ async fn main() {
         },
         ("next", Some(_matches)) => {
             spotify.next_track(None).await.unwrap();
-
         },
         ("previous", Some(_matches)) => {
             spotify.previous_track(None).await.unwrap();
-
         },
         ("players", Some(_matches)) => {
-            eprintln!("yes");
+            let devices = spotify.device().await.unwrap();
+            for device in devices.devices {
+                println!("{} {} {:?}", device.name, device.id, device.is_active);
+            }
         },
         ("", None) => {
             eprintln!("Missing subcommand.");
