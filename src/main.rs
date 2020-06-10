@@ -13,23 +13,7 @@ use clap::{Arg, App, SubCommand};
 
 #[tokio::main]
 async fn main() {
-    let matches = App::new("spotify-polybar")
-                          .version("1.0")
-                          .author("Spike Grobstein <me@spike.cx>")
-                          .about("Does awesome things")
-                          .subcommand(SubCommand::with_name("status")
-                                      .about("Output current track info")
-                          )
-                          .subcommand(SubCommand::with_name("playpause")
-                                      .about("Toggle play/pause")
-                          )
-                          .subcommand(SubCommand::with_name("next")
-                                      .about("Next track")
-                          )
-                          .subcommand(SubCommand::with_name("previous")
-                                      .about("Previous track")
-                          )
-                          .get_matches();
+    let matches = get_cli_app().get_matches();
 
     let spotify = match get_spotify_client().await {
         Ok(spotify) => spotify,
@@ -72,6 +56,16 @@ async fn main() {
             spotify.previous_track(None).await.unwrap();
 
         },
+        ("players", Some(_matches)) => {
+            eprintln!("yes");
+        },
+        ("", None) => {
+            eprintln!("Missing subcommand.");
+            get_cli_app()
+                .print_long_help()
+                .unwrap();
+            std::process::exit(1);
+        },
         _ => unreachable!(),
     }
 }
@@ -113,4 +107,26 @@ async fn get_spotify_client() -> Result<Spotify> {
             std::process::exit(1);
         }
     }
+}
+
+fn get_cli_app() -> App<'static, 'static> {
+    App::new("spotify-polybar")
+              .version("1.0")
+              .author("Spike Grobstein <me@spike.cx>")
+              .about("Does awesome things")
+              .subcommand(SubCommand::with_name("status")
+                          .about("Output current track info")
+              )
+              .subcommand(SubCommand::with_name("playpause")
+                          .about("Toggle play/pause")
+              )
+              .subcommand(SubCommand::with_name("next")
+                          .about("Next track")
+              )
+              .subcommand(SubCommand::with_name("previous")
+                          .about("Previous track")
+              )
+              .subcommand(SubCommand::with_name("players")
+                          .about("List available players")
+              )
 }
