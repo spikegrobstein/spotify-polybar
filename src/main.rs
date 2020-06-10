@@ -3,7 +3,7 @@ use rspotify::oauth2::{SpotifyClientCredentials, SpotifyOAuth};
 use rspotify::util::get_token;
 use rspotify::model::artist::SimplifiedArtist;
 
-use anyhow::{Result, anyhow};
+// use anyhow::{Result, anyhow};
 
 use std::env;
 use std::path::PathBuf;
@@ -14,26 +14,24 @@ use clap::{Arg, App, SubCommand};
 #[tokio::main]
 async fn main() {
     let matches = get_cli_app().get_matches();
-
-    let spotify = match get_spotify_client().await {
-        Ok(spotify) => spotify,
+    
+    match handle(matches).await {
+        Ok(_) => {},
         Err(error) => {
             println!("Error.");
             eprintln!("Error: {}", error);
             std::process::exit(1);
         }
-    };
+    }
+
+}
+
+async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error::Error>> {
+    let spotify = get_spotify_client().await?;
 
     match matches.subcommand() {
         ("status", Some(_matches)) => {
-            let playing = match spotify.current_user_playing_track().await {
-                Ok(playing) => playing,
-                Err(error) => {
-                    println!("Error.");
-                    eprintln!("Error: {}", error);
-                    std::process::exit(1);
-                }
-            };
+            let playing = spotify.current_user_playing_track().await?;
 
             match playing {
                 None => {
@@ -45,17 +43,33 @@ async fn main() {
                 }
             }
         },
-        ("playpause", Some(_matches)) => {
-            spotify.pause_playback(None).await.unwrap();
+        ("playpause", Some(matches)) => {
+            let playing = spotify.current_user_playing_track().await?;
+
+            let device_id = matches.value_of("device_id").map(|d| d.to_owned());
+
+            match playing {
+                None => {
+                    spotify.start_playback(device_id, None, None, None, None).await?;
+                },
+                Some(playing) => {
+                    if playing.is_playing {
+                        spotify.pause_playback(device_id).await?;
+                    } else {
+                        spotify.start_playback(device_id, None, None, None, None).await?;
+                    }
+                }
+            }
+
         },
         ("next", Some(_matches)) => {
-            spotify.next_track(None).await.unwrap();
+            spotify.next_track(None).await?;
         },
         ("previous", Some(_matches)) => {
-            spotify.previous_track(None).await.unwrap();
+            spotify.previous_track(None).await?;
         },
         ("players", Some(_matches)) => {
-            let devices = spotify.device().await.unwrap();
+            let devices = spotify.device().await?;
             for device in devices.devices {
                 println!("{} {} {:?}", device.name, device.id, device.is_active);
             }
@@ -68,7 +82,9 @@ async fn main() {
             std::process::exit(1);
         },
         _ => unreachable!(),
-    }
+    };
+
+    Ok(())
 }
 
 fn render_artist(artists: Vec<SimplifiedArtist>) -> String {
@@ -79,7 +95,7 @@ fn render_artist(artists: Vec<SimplifiedArtist>) -> String {
     .join(", ")
 }
 
-async fn get_spotify_client() -> Result<Spotify> {
+async fn get_spotify_client() -> Result<Spotify, Box<dyn std::error::Error>> {
     let home_path = env::var("HOME").unwrap_or("./".to_string());
 
     let mut token_cache_file = PathBuf::from(home_path);
@@ -120,6 +136,12 @@ fn get_cli_app() -> App<'static, 'static> {
               )
               .subcommand(SubCommand::with_name("playpause")
                           .about("Toggle play/pause")
+                          .arg(Arg::with_name("device_id")
+                                .long("device-id")
+                                .short("d")
+                                .help("ID of target device")
+                                .takes_value(true)
+                          )
               )
               .subcommand(SubCommand::with_name("next")
                           .about("Next track")
