@@ -66,8 +66,9 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
             let is_playing = get_is_playing(&spotify).await?;
 
             let button = match is_playing {
-                true => "pause",
-                false => "play",
+                Some(true) => "pause",
+                Some(false) => "play",
+                None => "disabled",
             };
 
             println!("{}", matches.value_of(button).unwrap());
@@ -97,12 +98,12 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-async fn get_is_playing(spotify: &Spotify) -> Result<bool, Box<dyn std::error::Error>> {
+async fn get_is_playing(spotify: &Spotify) -> Result<Option<bool>, Box<dyn std::error::Error>> {
     let playing = spotify.current_user_playing_track().await?;
 
     match playing {
-        None => Ok(false),
-        Some(playing) => Ok(playing.is_playing),
+        None => Ok(None),
+        Some(playing) => Ok(Some(playing.is_playing)),
     }
 }
 
@@ -175,6 +176,12 @@ fn get_cli_app() -> App<'static, 'static> {
                               .help("The button for triggering pause")
                               .takes_value(true)
                               .default_value("pause")
+                          )
+                          .arg(Arg::with_name("disabled")
+                              .long("disabled")
+                              .help("The button for disabled")
+                              .takes_value(true)
+                              .default_value("disabled")
                           )
               )
               .subcommand(SubCommand::with_name("next")
