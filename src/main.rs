@@ -62,6 +62,16 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
             }
 
         },
+        ("play-button", Some(matches)) => {
+            let is_playing = get_is_playing(&spotify).await?;
+
+            let button = match is_playing {
+                true => "pause",
+                false => "play",
+            };
+
+            println!("{}", matches.value_of(button).unwrap());
+        },
         ("next", Some(_matches)) => {
             spotify.next_track(None).await?;
         },
@@ -85,6 +95,15 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
     };
 
     Ok(())
+}
+
+async fn get_is_playing(spotify: &Spotify) -> Result<bool, Box<dyn std::error::Error>> {
+    let playing = spotify.current_user_playing_track().await?;
+
+    match playing {
+        None => Ok(false),
+        Some(playing) => Ok(playing.is_playing),
+    }
 }
 
 fn render_artist(artists: Vec<SimplifiedArtist>) -> String {
@@ -141,6 +160,21 @@ fn get_cli_app() -> App<'static, 'static> {
                                 .short("d")
                                 .help("ID of target device")
                                 .takes_value(true)
+                          )
+              )
+              .subcommand(SubCommand::with_name("play-button")
+                          .about("Output the play button")
+                          .arg(Arg::with_name("play")
+                              .long("play")
+                              .help("The button for triggering play")
+                              .takes_value(true)
+                              .default_value("play")
+                          )
+                          .arg(Arg::with_name("pause")
+                              .long("pause")
+                              .help("The button for triggering pause")
+                              .takes_value(true)
+                              .default_value("pause")
                           )
               )
               .subcommand(SubCommand::with_name("next")
