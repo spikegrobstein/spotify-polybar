@@ -1,9 +1,7 @@
-use rspotify::client::Spotify;
-use rspotify::oauth2::{SpotifyClientCredentials, SpotifyOAuth};
-use rspotify::util::get_token;
-use rspotify::model::artist::SimplifiedArtist;
-
-// use anyhow::{Result, anyhow};
+use rspotify::{AuthCodeSpotify, Credentials, OAuth, Config};
+use rspotify::prelude::*;
+use rspotify::model::{AdditionalType, SimplifiedArtist, PlayableItem};
+use rspotify::scopes;
 
 use std::env;
 use std::path::PathBuf;
@@ -14,7 +12,7 @@ use clap::{Arg, App, SubCommand};
 #[tokio::main]
 async fn main() {
     let matches = get_cli_app().get_matches();
-    
+
     match handle(matches).await {
         Ok(_) => {},
         Err(error) => {
@@ -31,32 +29,38 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
 
     match matches.subcommand() {
         ("status", Some(_matches)) => {
-            let playing = spotify.current_user_playing_track().await?;
+            let playing = spotify.current_playing(None, Some(&[AdditionalType::Track])).await?;
 
             match playing {
                 None => {
                     println!("Nothing.");
                 },
-                Some(playing) => {
-                    let item = playing.item.unwrap();
-                    println!("{}: {}", render_artist(item.artists), item.name);
+                Some(context) => {
+                    match context.item {
+                        Some(PlayableItem::Track(track)) => {
+                            println!("{}: {}", render_artist(track.artists), track.name);
+                        },
+                        _ => {
+                            println!("Nothing.");
+                        }
+                    }
                 }
             }
         },
         ("playpause", Some(matches)) => {
-            let playing = spotify.current_user_playing_track().await?;
+            let playing = spotify.current_playing(None, Some(&[AdditionalType::Track])).await?;
 
-            let device_id = matches.value_of("device_id").map(|d| d.to_owned());
+            let device_id = matches.value_of("device_id");
 
             match playing {
                 None => {
-                    spotify.start_playback(device_id, None, None, None, None).await?;
+                    spotify.resume_playback(device_id, None).await?;
                 },
-                Some(playing) => {
-                    if playing.is_playing {
+                Some(context) => {
+                    if context.is_playing {
                         spotify.pause_playback(device_id).await?;
                     } else {
-                        spotify.start_playback(device_id, None, None, None, None).await?;
+                        spotify.resume_playback(device_id, None).await?;
                     }
                 }
             }
@@ -81,8 +85,8 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
         },
         ("players", Some(_matches)) => {
             let devices = spotify.device().await?;
-            for device in devices.devices {
-                println!("{} {} {:?}", device.name, device.id, device.is_active);
+            for device in devices {
+                println!("{} {} {:?}", device.name, device.id.unwrap_or_default(), device.is_active);
             }
         },
         ("", None) => {
@@ -98,12 +102,12 @@ async fn handle(matches: clap::ArgMatches<'_>) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-async fn get_is_playing(spotify: &Spotify) -> Result<Option<bool>, Box<dyn std::error::Error>> {
-    let playing = spotify.current_user_playing_track().await?;
+async fn get_is_playing(spotify: &AuthCodeSpotify) -> Result<Option<bool>, Box<dyn std::error::Error>> {
+    let playing = spotify.current_playing(None, Some(&[AdditionalType::Track])).await?;
 
     match playing {
         None => Ok(None),
-        Some(playing) => Ok(Some(playing.is_playing)),
+        Some(context) => Ok(Some(context.is_playing)),
     }
 }
 
@@ -115,35 +119,39 @@ fn render_artist(artists: Vec<SimplifiedArtist>) -> String {
     .join(", ")
 }
 
-async fn get_spotify_client() -> Result<Spotify, Box<dyn std::error::Error>> {
+async fn get_spotify_client() -> Result<AuthCodeSpotify, Box<dyn std::error::Error>> {
     let home_path = env::var("HOME").unwrap_or("./".to_string());
 
     let mut token_cache_file = PathBuf::from(home_path);
     token_cache_file.push(".spotify_polybar_token_cache.json");
 
-    let mut oauth = SpotifyOAuth::default()
-        .client_id("4abb24ee71384d518e0bb9e3d54b8241")
-        .client_secret("XXXXXXXXXXXXXXX") // this has been reset and has to be populated
-        .redirect_uri("http://localhost:8888/callback")
-        .scope("user-read-playback-state user-modify-playback-state user-read-private")
-        .cache_path(token_cache_file)
-        .build();
+    let creds = Credentials::new(
+        "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", // this has been reset and has to be populated
+    );
 
-    match get_token(&mut oauth).await {
-        Some(token_info) => {
-            let client_credential = SpotifyClientCredentials::default()
-                .token_info(token_info)
-                .build();
+    let oauth = OAuth {
+        redirect_uri: "https://localhost.apple.com:8888/callback".to_string(),
+        scopes: scopes!(
+            "user-read-playback-state",
+            "user-modify-playback-state",
+            "user-read-private"
+        ),
+        ..Default::default()
+    };
 
-            Ok(Spotify::default()
-                .client_credentials_manager(client_credential)
-                .build())
-        },
-        None => {
-            eprintln!("error.");
-            std::process::exit(1);
-        }
-    }
+    let config = Config {
+        cache_path: token_cache_file,
+        token_cached: true,
+        ..Default::default()
+    };
+
+    let spotify = AuthCodeSpotify::with_config(creds, oauth, config);
+
+    let url = spotify.get_authorize_url(false)?;
+    spotify.prompt_for_token(&url).await?;
+
+    Ok(spotify)
 }
 
 fn get_cli_app() -> App<'static, 'static> {
